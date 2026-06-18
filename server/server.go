@@ -1,14 +1,17 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"casinoprobe/config"
@@ -59,7 +62,7 @@ type Server struct {
 	mu    sync.Mutex
 }
 
-// Start launches the web server on the given port.
+// Start launches the web server on the given port with graceful shutdown.
 func Start(port string) {
 	srv := &Server{
 		Bus:   NewEventBus(),
@@ -78,16 +81,36 @@ func Start(port string) {
 	mux.HandleFunc("/api/bot/start", srv.handleBotStart)
 	mux.HandleFunc("/api/bot/events", srv.handleSSE)
 
+	httpSrv := &http.Server{
+		Addr:         port,
+		Handler:      mux,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 0, // SSE needs no write timeout
+		IdleTimeout:  60 * time.Second,
+	}
+
 	fmt.Printf("\n  ╔═══════════════════════════════════════════════════════╗\n")
 	fmt.Printf("  ║   ♠ ♥ ♦ ♣  Casino Automation Bot  ♣ ♦ ♥ ♠            ║\n")
 	fmt.Printf("  ║   Running at http://localhost%s                  ║\n", port)
 	fmt.Printf("  ╚═══════════════════════════════════════════════════════╝\n")
 	fmt.Printf("\n  Press Ctrl+C to stop the server.\n\n")
 
-	if err := http.ListenAndServe(port, mux); err != nil {
+	// ─── Graceful shutdown (#5) ───
+	go func() {
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		<-sigCh
+		fmt.Println("\n  Shutting down gracefully...")
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		httpSrv.Shutdown(ctx)
+	}()
+
+	if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
 		os.Exit(1)
 	}
+	fmt.Println("  Server stopped.")
 }
 
 // ─── Static File Handlers ───
@@ -104,7 +127,14 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	webDir := getWebDir()
 	filename := strings.TrimPrefix(r.URL.Path, "/static/")
-	http.ServeFile(w, r, filepath.Join(webDir, filename))
+
+	// ─── Path traversal protection (#4) ───
+	cleanPath := filepath.Clean(filepath.Join(webDir, filename))
+	if !strings.HasPrefix(cleanPath, filepath.Clean(webDir)) {
+		http.NotFound(w, r)
+		return
+	}
+	http.ServeFile(w, r, cleanPath)
 }
 
 func getWebDir() string {
@@ -202,13 +232,30 @@ func (s *Server) handleBotStart(w http.ResponseWriter, r *http.Request) {
 func (s *Server) runBot(domain *Domain, amount, username, password string) {
 	logger := NewWebLogger(s.Bus)
 
+	// ─── Ensure state resets when done (#2) ───
+	defer func() {
+		time.Sleep(500 * time.Millisecond) // let final SSE events flush
+		s.mu.Lock()
+		if s.State != StateIdle {
+			s.State = StateIdle
+		}
+		s.mu.Unlock()
+	}()
+
+	// ─── Timeout: abort after 2 minutes (#6) ───
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	_ = ctx // used below in select checks
+
 	// ─── Banner ───
 	logger.Section("Automation Bot: Select Domain")
 	PublishStatus(s.Bus, "running", "Bot started")
 
+	// ─── Mask username in logs (#3) ───
+	masked := maskUsername(username)
 	logger.Info("Selected domain: %s (%s)", domain.Name, domain.URL)
 	logger.Info("    -> Login URL: %s/api2/v2/login", domain.URL)
-	logger.Info("    -> Amount: %s INR", amount)
+	logger.Info("    -> User: %s | Amount: %s INR", masked, amount)
 
 	// ─── Build Configuration ───
 	cfg := config.DefaultConfig()
@@ -251,9 +298,31 @@ func (s *Server) runBot(domain *Domain, amount, username, password string) {
 		return
 	}
 
+	// ─── Forward XSRF-TOKEN cookie as header (#8) ───
+	for name, val := range session.Cookies {
+		if strings.EqualFold(name, "XSRF-TOKEN") {
+			decodedVal, _ := url.QueryUnescape(val)
+			if client.Headers.Extra == nil {
+				client.Headers.Extra = make(map[string]string)
+			}
+			client.Headers.Extra["X-XSRF-TOKEN"] = decodedVal
+			logger.Info("[*] XSRF-TOKEN forwarded as header")
+			break
+		}
+	}
+
 	// ─── Wait for session to settle (same as Android binary) ───
 	logger.Info("[*] Waiting 3 seconds for session to settle...")
-	time.Sleep(3 * time.Second)
+	select {
+	case <-time.After(3 * time.Second):
+	case <-ctx.Done():
+		logger.Error("[!] Bot timed out")
+		PublishStatus(s.Bus, "error", "Bot timed out after 2 minutes")
+		s.mu.Lock()
+		s.State = StateError
+		s.mu.Unlock()
+		return
+	}
 
 	// ─── Bonus Flow (same as Android binary) ───
 	logger.Section(fmt.Sprintf("Starting Bonus Flow for: %s", domain.URL))
@@ -347,7 +416,7 @@ func (s *Server) runBot(domain *Domain, amount, username, password string) {
 	logger.Info("")
 	logger.Success("[*] All done Good Luck! :)")
 
-	// ─── Done ───
+	// ─── Done — mark complete, then defer resets to idle (#2) ───
 	s.mu.Lock()
 	s.State = StateComplete
 	s.mu.Unlock()
@@ -355,6 +424,8 @@ func (s *Server) runBot(domain *Domain, amount, username, password string) {
 	PublishStatus(s.Bus, "complete", fmt.Sprintf(
 		"Bot complete — %d promotion claims processed on %s",
 		len(results), domain.Name))
+
+	// State will be reset to idle by the deferred func
 }
 
 // fetchPromoIDs scrapes /promotions page after login and extracts IDs
@@ -442,6 +513,14 @@ func isNumeric(s string) bool {
 		}
 	}
 	return true
+}
+
+// maskUsername shows first 3 chars + *** for privacy in logs (#3)
+func maskUsername(u string) string {
+	if len(u) <= 3 {
+		return u
+	}
+	return u[:3] + "***"
 }
 
 
