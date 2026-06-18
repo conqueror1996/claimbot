@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Casino Bot</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="logo">
+      <div class="logo-icon">♠</div>
+      <div class="logo-text">
+        <span class="logo-name">Casino Bot</span>
+        <span class="logo-ver">v2.0</span>
+      </div>
+    </div>
+    <div id="status-pill" class="status-pill">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-text">Idle</span>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="main">
+
+    <!-- Left: Config -->
+    <section class="panel config">
+
+      <!-- Step 1: Domain -->
+      <div class="card">
+        <div class="card-label"><span class="step">01</span>Select Domain</div>
+        <div class="domain-list" id="domain-grid">
+          <label class="domain-row">
+            <input type="radio" name="domain" value="1" checked>
+            <div class="domain-card">
+              <div class="domain-num">1</div>
+              <div class="domain-info">
+                <div class="domain-name">PlayKaro 365</div>
+                <div class="domain-url">playkaro365.com</div>
+              </div>
+              <svg class="domain-tick" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="none" stroke-width="1.5"/><path d="M5 8l2 2 4-4" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="1.5"/></svg>
+            </div>
+          </label>
+          <label class="domain-row">
+            <input type="radio" name="domain" value="2">
+            <div class="domain-card">
+              <div class="domain-num">2</div>
+              <div class="domain-info">
+                <div class="domain-name">JeetExch 99</div>
+                <div class="domain-url">jeetexch99.com</div>
+              </div>
+              <svg class="domain-tick" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="none" stroke-width="1.5"/><path d="M5 8l2 2 4-4" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="1.5"/></svg>
+            </div>
+          </label>
+          <label class="domain-row">
+            <input type="radio" name="domain" value="3">
+            <div class="domain-card">
+              <div class="domain-num">3</div>
+              <div class="domain-info">
+                <div class="domain-name">SpinJeet 365</div>
+                <div class="domain-url">spinjeet365.com</div>
+              </div>
+              <svg class="domain-tick" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="none" stroke-width="1.5"/><path d="M5 8l2 2 4-4" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="1.5"/></svg>
+            </div>
+          </label>
+          <label class="domain-row">
+            <input type="radio" name="domain" value="4">
+            <div class="domain-card">
+              <div class="domain-num">4</div>
+              <div class="domain-info">
+                <div class="domain-name">WinClash 365</div>
+                <div class="domain-url">winclash365.com</div>
+              </div>
+              <svg class="domain-tick" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="none" stroke-width="1.5"/><path d="M5 8l2 2 4-4" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="1.5"/></svg>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Step 2: Credentials -->
+      <div class="card">
+        <div class="card-label"><span class="step">02</span>Credentials &amp; Amount</div>
+        <form id="bot-form" autocomplete="off">
+          <div class="field">
+            <label class="field-label" for="input-username">Email / Username</label>
+            <input class="field-input" type="text" id="input-username" placeholder="Enter email or username" required>
+          </div>
+          <div class="field">
+            <label class="field-label" for="input-password">Password</label>
+            <input class="field-input" type="password" id="input-password" placeholder="Enter password" required>
+          </div>
+          <div class="field">
+            <label class="field-label" for="input-amount">Amount</label>
+            <div class="input-wrap">
+              <input class="field-input" type="number" id="input-amount" placeholder="1000" min="1" required>
+              <span class="input-tag">₹ INR</span>
+            </div>
+          </div>
+          <button type="submit" class="run-btn" id="btn-start">
+            <span id="btn-icon">▶</span>
+            <span id="btn-text">Run Bot</span>
+          </button>
+        </form>
+      </div>
+
+    </section>
+
+    <!-- Right: Console -->
+    <section class="panel console">
+      <div class="console-bar">
+        <div class="mac-dots">
+          <span class="dot r"></span>
+          <span class="dot y"></span>
+          <span class="dot g"></span>
+        </div>
+        <span class="console-label">Live Output</span>
+        <button class="clear-btn" id="btn-clear">Clear</button>
+      </div>
+      <div class="console-body" id="console-output">
+        <div class="empty-state" id="empty-state">
+          <div class="empty-icon">♠ ♥ ♦ ♣</div>
+          <div class="empty-title">Bot Ready</div>
+          <div class="empty-sub">Fill in your details and press Run Bot</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
